@@ -34,7 +34,8 @@ class Settings:
                     "# WhatsApp Business Cloud API Configuration\n"
                     "ACCESS_TOKEN=your_whatsapp_access_token_here\n"
                     "PHONE_NUMBER_ID=your_phone_number_id_here\n"
-                    "API_VERSION=v20.0\n\n"
+                    "API_VERSION=v20.0\n"
+                    "CONNECTION_METHOD=api\n\n"
                     "# Application Preferences\n"
                     "APP_THEME=System\n"
                     "SENDER_DELAY=5\n"
@@ -49,6 +50,7 @@ class Settings:
         self.access_token = os.getenv("ACCESS_TOKEN", "")
         self.phone_number_id = os.getenv("PHONE_NUMBER_ID", "")
         self.api_version = os.getenv("API_VERSION", "v20.0")
+        self.connection_method = os.getenv("CONNECTION_METHOD", "api")
         
         # Application Preferences
         self.app_theme = os.getenv("APP_THEME", "System")
@@ -72,7 +74,8 @@ class Settings:
              app_theme: str = None, 
              sender_delay: int = None, 
              retry_limit: int = None, 
-             play_sound: bool = None) -> None:
+             play_sound: bool = None,
+             connection_method: str = None) -> None:
         """Saves configuration changes to the .env file and updates memory attributes."""
         
         # Create file if missing
@@ -106,6 +109,10 @@ class Settings:
         if play_sound is not None:
             self.play_sound = play_sound
             set_key(str(self.env_path), "PLAY_SOUND", str(self.play_sound))
+            
+        if connection_method is not None:
+            self.connection_method = connection_method.strip().lower()
+            set_key(str(self.env_path), "CONNECTION_METHOD", self.connection_method)
             
         # Re-load to confirm alignment
         self.load()

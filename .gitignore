@@ -1,0 +1,12 @@
+# WhatsApp Session Cache
+.whatsapp_session/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Local Logs
+logs/
+
+# Local Environment Credentials
+.env

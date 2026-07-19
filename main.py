@@ -15,6 +15,7 @@ from excel_reader import ExcelReader
 from template_manager import TemplateManager
 from logger import WhatsAppLogger
 from whatsapp_api import WhatsAppClient
+from whatsapp_web_api import WhatsAppWebClient
 from gui import WhatsAppSenderGUI
 
 class WhatsAppCampaignController:
@@ -33,6 +34,9 @@ class WhatsAppCampaignController:
             phone_number_id=self.settings.phone_number_id,
             api_version=self.settings.api_version
         )
+        
+        # Initialize Web client
+        self.web_client = WhatsAppWebClient(self.base_dir)
         
         # 2. Instantiate GUI
         self.gui = WhatsAppSenderGUI(self.settings)
@@ -76,6 +80,8 @@ class WhatsAppCampaignController:
         self.gui.set_callback("test_api_connection", self.handle_test_api_connection)
         self.gui.set_callback("save_settings", self.handle_save_settings)
         self.gui.set_callback("save_logo", self.handle_save_logo)
+        self.gui.set_callback("open_whatsapp_web_browser", self.handle_open_whatsapp_web)
+        self.gui.set_callback("close_whatsapp_web_browser", self.handle_close_whatsapp_web)
         
         # Dashboard refresh trigger
         self.gui.set_callback("refresh_dashboard", self.refresh_dashboard_stats)
@@ -98,6 +104,13 @@ class WhatsAppCampaignController:
 
     def _check_api_connectivity_background(self) -> None:
         """Checks WhatsApp credentials status in the background and updates the GUI."""
+        if self.settings.connection_method == "web":
+            if self.web_client.is_browser_running():
+                threading.Thread(target=self._poll_web_browser_status, daemon=True).start()
+            else:
+                self.gui.update_connection_status_lbl("WhatsApp Web: Disconnected (Open browser in Settings)", success=False)
+            return
+
         if not self.api_client.is_configured():
             self.gui.update_connection_status_lbl("No API credentials configured. Enter them in Settings.", success=False)
             return
@@ -291,7 +304,7 @@ class WhatsAppCampaignController:
                 
         threading.Thread(target=run_test, daemon=True).start()
 
-    def handle_save_settings(self, token: str, phone_id: str, version: str, sound: bool, retry: int) -> None:
+    def handle_save_settings(self, token: str, phone_id: str, version: str, sound: bool, retry: int, connection_method: str = "api") -> None:
         """Saves config variables and rebuilds the api_client instance."""
         delay = int(self.gui.slider_delay.get())
         
@@ -301,7 +314,8 @@ class WhatsAppCampaignController:
             api_version=version,
             play_sound=sound,
             retry_limit=retry,
-            sender_delay=delay
+            sender_delay=delay,
+            connection_method=connection_method
         )
         
         # Re-initialize client
@@ -312,10 +326,77 @@ class WhatsAppCampaignController:
         )
         
         # Recheck connectivity
-        threading.Thread(target=self._check_api_connectivity_background, daemon=True).start()
+        if self.settings.connection_method == "api":
+            threading.Thread(target=self._check_api_connectivity_background, daemon=True).start()
+        else:
+            self.gui.update_connection_status_lbl("WhatsApp Web (Linked Device) configured", success=True)
+            if self.web_client.is_browser_running():
+                threading.Thread(target=self._poll_web_browser_status, daemon=True).start()
+            else:
+                self.gui.lbl_web_status.configure(text="Browser Status: Closed\nOpen browser to authenticate.", text_color="gray50")
         
         self.gui.append_log("Application configuration updated successfully.")
         messagebox.showinfo("Success", "Settings updated successfully!")
+
+    def handle_open_whatsapp_web(self) -> None:
+        """Launches the Chrome browser for WhatsApp Web in a background thread."""
+        def run_browser():
+            self.gui.lbl_web_status.configure(text="Browser Status: Opening Chrome...", text_color="#3b82f6")
+            self.gui.btn_open_web.configure(state="disabled")
+            
+            success, msg = self.web_client.start_browser()
+            self.gui.btn_open_web.configure(state="normal")
+            
+            if success:
+                self.gui.append_log("WhatsApp Web browser window opened.")
+                threading.Thread(target=self._poll_web_browser_status, daemon=True).start()
+            else:
+                self.gui.lbl_web_status.configure(text=f"Browser Status: Launch Error\n{msg}", text_color="#ef4444")
+                self.gui.append_log(f"Failed to start WhatsApp Web browser: {msg}")
+                messagebox.showerror("Browser Error", msg)
+                
+        threading.Thread(target=run_browser, daemon=True).start()
+
+    def handle_close_whatsapp_web(self) -> None:
+        """Closes the WhatsApp Web browser window."""
+        self.web_client.close_browser()
+        self.gui.lbl_web_status.configure(text="Browser Status: Closed\nOpen browser to authenticate.", text_color="gray50")
+        self.gui.update_connection_status_lbl("WhatsApp Web: Disconnected", success=False)
+        self.gui.append_log("WhatsApp Web browser window closed.")
+
+    def _poll_web_browser_status(self) -> None:
+        """Polls browser login status and updates the GUI dashboard/settings cards."""
+        qr_path = self.base_dir / "assets" / "qr_code.png"
+        
+        while self.web_client.is_browser_running():
+            is_logged_in, status = self.web_client.check_login_status()
+            try:
+                if is_logged_in:
+                    self.gui.hide_qr_code()
+                    self.gui.lbl_web_status.configure(text="Browser Status: Connected\nAuthenticated and ready to send messages.", text_color="#10b981")
+                    self.gui.update_connection_status_lbl("WhatsApp Web: Connected", success=True)
+                else:
+                    if status == "Scan QR Code":
+                        success, err = self.web_client.capture_qr_code(qr_path)
+                        if success:
+                            self.gui.show_qr_code(str(qr_path))
+                        self.gui.lbl_web_status.configure(text="Browser Status: Scan QR Code\nPlease scan the QR code displayed below.", text_color="#eab308")
+                        self.gui.update_connection_status_lbl("WhatsApp Web: Scan QR", success=False)
+                    else:
+                        self.gui.hide_qr_code()
+                        self.gui.lbl_web_status.configure(text=f"Browser Status: {status}", text_color="gray50")
+                        self.gui.update_connection_status_lbl(f"WhatsApp Web: {status}", success=False)
+            except Exception as e:
+                logger.error(f"Error updating QR GUI status: {e}")
+                break
+            time.sleep(2)
+            
+        try:
+            self.gui.hide_qr_code()
+            self.gui.lbl_web_status.configure(text="Browser Status: Closed\nOpen browser to authenticate.", text_color="gray50")
+            self.gui.update_connection_status_lbl("WhatsApp Web: Disconnected", success=False)
+        except Exception:
+            pass
 
     def handle_save_logo(self, source_logo_path: str) -> None:
         """Saves custom company logo file."""
@@ -434,6 +515,21 @@ class WhatsAppCampaignController:
         
         self.gui.append_log(f"Starting campaign targeting {total_count} leads.")
         
+        # Check WhatsApp Web connection if selected
+        if self.settings.connection_method == "web":
+            if not self.web_client.is_browser_running():
+                self.gui.append_log("Campaign Aborted: WhatsApp Web browser is not open.")
+                messagebox.showerror("Browser Closed", "Please open the WhatsApp Web browser first from Settings.")
+                self._end_campaign_run(0, total_count, "Aborted")
+                return
+                
+            is_logged_in, _ = self.web_client.check_login_status()
+            if not is_logged_in:
+                self.gui.append_log("Campaign Aborted: WhatsApp Web is not authenticated.")
+                messagebox.showerror("Not Authenticated", "Please scan the QR code and login to WhatsApp Web first.")
+                self._end_campaign_run(0, total_count, "Aborted")
+                return
+        
         # 1. Handle scheduling delay
         if schedule_time:
             self.gui.append_log(f"Campaign scheduled. Waiting until {schedule_time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -453,23 +549,26 @@ class WhatsAppCampaignController:
                 self.gui.update_progress(0, total_count, countdown_str)
                 time.sleep(1)
 
-        # 2. Upload media file once to Meta if media attachment is active
+        # 2. Upload media file once to Meta if media attachment is active and using official API
         media_id = ""
         if attachment_path:
-            self.gui.append_log(f"Uploading media file to WhatsApp: {Path(attachment_path).name}...")
-            self.gui.update_progress(0, total_count, "Uploading media attachment...")
-            
-            # Execute upload
-            success, upload_id, err_msg = self.api_client.upload_media(attachment_path, retry_limit=self.settings.retry_limit)
-            
-            if success:
-                media_id = upload_id
-                self.gui.append_log(f"Media uploaded successfully. Reference ID: {media_id}")
+            if self.settings.connection_method == "web":
+                media_id = "web_mode"
             else:
-                self.gui.append_log(f"Media Upload Failed: {err_msg}")
-                messagebox.showerror("Media Upload Failed", f"Could not upload brochure file to Meta server:\n{err_msg}")
-                self._end_campaign_run(0, total_count, "Upload Error")
-                return
+                self.gui.append_log(f"Uploading media file to WhatsApp: {Path(attachment_path).name}...")
+                self.gui.update_progress(0, total_count, "Uploading media attachment...")
+                
+                # Execute upload
+                success, upload_id, err_msg = self.api_client.upload_media(attachment_path, retry_limit=self.settings.retry_limit)
+                
+                if success:
+                    media_id = upload_id
+                    self.gui.append_log(f"Media uploaded successfully. Reference ID: {media_id}")
+                else:
+                    self.gui.append_log(f"Media Upload Failed: {err_msg}")
+                    messagebox.showerror("Media Upload Failed", f"Could not upload brochure file to Meta server:\n{err_msg}")
+                    self._end_campaign_run(0, total_count, "Upload Error")
+                    return
 
         # 3. Message dispatching loop
         for idx, lead in enumerate(selected_leads):
@@ -515,49 +614,66 @@ class WhatsAppCampaignController:
             
             # Try to send
             try:
-                # If media attachment is active
-                if media_id:
-                    # Caption length validation: if custom text fits caption limit (1024), send it in a single API hit.
-                    if len(personalized_msg) <= 1024:
-                        api_success, wamid, response_data = self.api_client.send_media_message(
+                if self.settings.connection_method == "web":
+                    # WhatsApp Web Automation Send
+                    if attachment_path:
+                        api_success, wamid, response_data = self.web_client.send_media_message(
                             to_phone=phone_to_send,
-                            media_id=media_id,
+                            media_id="",
                             file_path=attachment_path,
                             caption=personalized_msg,
                             retry_limit=self.settings.retry_limit
                         )
                     else:
-                        # Personalized message exceeds 1024 characters.
-                        # Meta doesn't support caption > 1024. Send media first, then send text message separately.
-                        self.gui.append_log("Message text > 1024 characters. Sending media first, then text separately...")
-                        
-                        media_success, media_wamid, media_response = self.api_client.send_media_message(
+                        api_success, wamid, response_data = self.web_client.send_text_message(
                             to_phone=phone_to_send,
-                            media_id=media_id,
-                            file_path=attachment_path,
-                            caption="",
+                            text=personalized_msg,
                             retry_limit=self.settings.retry_limit
                         )
-                        
-                        if media_success:
-                            # Send personalized text separately
-                            time.sleep(1) # short rest
-                            api_success, wamid, response_data = self.api_client.send_text_message(
+                else:
+                    # Official API Send
+                    if media_id:
+                        # Caption length validation: if custom text fits caption limit (1024), send it in a single API hit.
+                        if len(personalized_msg) <= 1024:
+                            api_success, wamid, response_data = self.api_client.send_media_message(
                                 to_phone=phone_to_send,
-                                text=personalized_msg,
+                                media_id=media_id,
+                                file_path=attachment_path,
+                                caption=personalized_msg,
                                 retry_limit=self.settings.retry_limit
                             )
                         else:
-                            api_success = False
-                            wamid = media_wamid
-                            response_data = media_response
-                else:
-                    # Text only send
-                    api_success, wamid, response_data = self.api_client.send_text_message(
-                        to_phone=phone_to_send,
-                        text=personalized_msg,
-                        retry_limit=self.settings.retry_limit
-                    )
+                            # Personalized message exceeds 1024 characters.
+                            # Meta doesn't support caption > 1024. Send media first, then send text message separately.
+                            self.gui.append_log("Message text > 1024 characters. Sending media first, then text separately...")
+                            
+                            media_success, media_wamid, media_response = self.api_client.send_media_message(
+                                to_phone=phone_to_send,
+                                media_id=media_id,
+                                file_path=attachment_path,
+                                caption="",
+                                retry_limit=self.settings.retry_limit
+                            )
+                            
+                            if media_success:
+                                # Send personalized text separately
+                                time.sleep(1) # short rest
+                                api_success, wamid, response_data = self.api_client.send_text_message(
+                                    to_phone=phone_to_send,
+                                    text=personalized_msg,
+                                    retry_limit=self.settings.retry_limit
+                                )
+                            else:
+                                api_success = False
+                                wamid = media_wamid
+                                response_data = media_response
+                    else:
+                        # Text only send
+                        api_success, wamid, response_data = self.api_client.send_text_message(
+                            to_phone=phone_to_send,
+                            text=personalized_msg,
+                            retry_limit=self.settings.retry_limit
+                        )
                     
             except Exception as e:
                 api_success = False

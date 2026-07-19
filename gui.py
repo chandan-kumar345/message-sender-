@@ -770,59 +770,115 @@ class WhatsAppSenderGUI(ctk.CTk):
         title_label = ctk.CTkLabel(frame, text="Configuration Settings", font=ctk.CTkFont(size=22, weight="bold"))
         title_label.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 20))
         
-        # Left Panel - API Connection Card
+        # Left Panel - Connection Card
         api_card = ctk.CTkFrame(frame)
         api_card.grid(row=1, column=0, sticky="nsew", padx=(0, 10), pady=5)
         api_card.grid_columnconfigure(0, weight=1)
         
-        api_title = ctk.CTkLabel(api_card, text="WhatsApp Cloud API", font=ctk.CTkFont(size=15, weight="bold"))
+        api_title = ctk.CTkLabel(api_card, text="WhatsApp Connection", font=ctk.CTkFont(size=15, weight="bold"))
         api_title.grid(row=0, column=0, padx=20, pady=(15, 10), sticky="w")
         
-        # Access Token
-        lbl_token = ctk.CTkLabel(api_card, text="Access Token (Bearer token):", font=ctk.CTkFont(size=12))
-        lbl_token.grid(row=1, column=0, padx=20, pady=2, sticky="w")
+        # Connection Method Selector
+        lbl_conn_method = ctk.CTkLabel(api_card, text="Connection Method:", font=ctk.CTkFont(size=12, weight="bold"))
+        lbl_conn_method.grid(row=1, column=0, padx=20, pady=(10, 2), sticky="w")
         
-        self.ent_token = ctk.CTkEntry(api_card, show="*")
-        self.ent_token.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="ew")
+        self.opt_conn_method = ctk.CTkOptionMenu(
+            api_card,
+            values=["Official Cloud API", "WhatsApp Web (Linked Device)"],
+            command=self._on_conn_method_changed
+        )
+        self.opt_conn_method.grid(row=2, column=0, padx=20, pady=(0, 15), sticky="ew")
+        
+        # 1. Cloud API Sub-frame
+        self.api_inputs_frame = ctk.CTkFrame(api_card, fg_color="transparent")
+        self.api_inputs_frame.grid_columnconfigure(0, weight=1)
+        
+        lbl_token = ctk.CTkLabel(self.api_inputs_frame, text="Access Token (Bearer token):", font=ctk.CTkFont(size=12))
+        lbl_token.grid(row=0, column=0, padx=20, pady=2, sticky="w")
+        
+        self.ent_token = ctk.CTkEntry(self.api_inputs_frame, show="*")
+        self.ent_token.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="ew")
         self.ent_token.insert(0, self.settings.access_token)
         
-        # Toggle Token Visibility
         self.show_token_var = tk.BooleanVar(value=False)
         self.chk_show_token = ctk.CTkCheckBox(
-            api_card, 
+            self.api_inputs_frame, 
             text="Show Token", 
             variable=self.show_token_var, 
             command=self._on_show_token_toggled,
             font=ctk.CTkFont(size=11)
         )
-        self.chk_show_token.grid(row=3, column=0, padx=20, pady=(0, 10), sticky="w")
+        self.chk_show_token.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="w")
         
-        # Phone ID
-        lbl_phone_id = ctk.CTkLabel(api_card, text="Phone Number ID:", font=ctk.CTkFont(size=12))
-        lbl_phone_id.grid(row=4, column=0, padx=20, pady=2, sticky="w")
+        lbl_phone_id = ctk.CTkLabel(self.api_inputs_frame, text="Phone Number ID:", font=ctk.CTkFont(size=12))
+        lbl_phone_id.grid(row=3, column=0, padx=20, pady=2, sticky="w")
         
-        self.ent_phone_id = ctk.CTkEntry(api_card)
-        self.ent_phone_id.grid(row=5, column=0, padx=20, pady=(0, 10), sticky="ew")
+        self.ent_phone_id = ctk.CTkEntry(self.api_inputs_frame)
+        self.ent_phone_id.grid(row=4, column=0, padx=20, pady=(0, 10), sticky="ew")
         self.ent_phone_id.insert(0, self.settings.phone_number_id)
         
-        # API Version
-        lbl_version = ctk.CTkLabel(api_card, text="API Version:", font=ctk.CTkFont(size=12))
-        lbl_version.grid(row=6, column=0, padx=20, pady=2, sticky="w")
+        lbl_version = ctk.CTkLabel(self.api_inputs_frame, text="API Version:", font=ctk.CTkFont(size=12))
+        lbl_version.grid(row=5, column=0, padx=20, pady=2, sticky="w")
         
-        self.ent_version = ctk.CTkEntry(api_card)
-        self.ent_version.grid(row=7, column=0, padx=20, pady=(0, 15), sticky="ew")
+        self.ent_version = ctk.CTkEntry(self.api_inputs_frame)
+        self.ent_version.grid(row=6, column=0, padx=20, pady=(0, 15), sticky="ew")
         self.ent_version.insert(0, self.settings.api_version)
         
-        # Test Credentials Connection Button
         self.btn_test_conn = ctk.CTkButton(
-            api_card,
+            self.api_inputs_frame,
             text="⚡ Test API Connection",
             fg_color="transparent",
             border_width=1,
             text_color=("gray10", "gray90"),
             command=self._on_test_connection_click
         )
-        self.btn_test_conn.grid(row=8, column=0, padx=20, pady=(5, 20), sticky="ew")
+        self.btn_test_conn.grid(row=7, column=0, padx=20, pady=(5, 20), sticky="ew")
+        
+        # 2. WhatsApp Web Sub-frame
+        self.web_inputs_frame = ctk.CTkFrame(api_card, fg_color="transparent")
+        self.web_inputs_frame.grid_columnconfigure(0, weight=1)
+        
+        self.btn_open_web = ctk.CTkButton(
+            self.web_inputs_frame,
+            text="🔗 Start WhatsApp Web Connection",
+            fg_color="#1f6aa5",
+            hover_color="#144d75",
+            command=self._on_open_web_click
+        )
+        self.btn_open_web.grid(row=0, column=0, padx=20, pady=(10, 10), sticky="ew")
+        
+        self.btn_close_web = ctk.CTkButton(
+            self.web_inputs_frame,
+            text="❌ Disconnect / Close Connection",
+            fg_color="transparent",
+            border_width=1,
+            text_color=("gray10", "gray90"),
+            command=self._on_close_web_click
+        )
+        self.btn_close_web.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="ew")
+        
+        self.lbl_web_status = ctk.CTkLabel(
+            self.web_inputs_frame,
+            text="Browser Status: Closed\nOpen browser to authenticate.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray50",
+            justify="left",
+            anchor="w"
+        )
+        self.lbl_web_status.grid(row=2, column=0, padx=20, pady=(10, 10), sticky="w")
+        
+        # QR Code display labels (not gridded by default, shown dynamically)
+        self.lbl_qr_title = ctk.CTkLabel(
+            self.web_inputs_frame,
+            text="Scan this QR code with WhatsApp:",
+            font=ctk.CTkFont(size=12, weight="bold")
+        )
+        self.lbl_qr_code = ctk.CTkLabel(self.web_inputs_frame, text="")
+        
+        # Set default view state
+        initial_method = "WhatsApp Web (Linked Device)" if self.settings.connection_method == "web" else "Official Cloud API"
+        self.opt_conn_method.set(initial_method)
+        self._on_conn_method_changed(initial_method)
 
         # Right Panel - Preferences Card
         pref_card = ctk.CTkFrame(frame)
@@ -1119,8 +1175,29 @@ class WhatsAppSenderGUI(ctk.CTk):
         sound = self.chk_sound_var.get()
         retry = int(self.opt_retry.get())
         
+        chosen_method = "web" if self.opt_conn_method.get() == "WhatsApp Web (Linked Device)" else "api"
+        
         if "save_settings" in self.callbacks:
-            self.callbacks["save_settings"](token, phone_id, version, sound, retry)
+            self.callbacks["save_settings"](token, phone_id, version, sound, retry, chosen_method)
+
+    def _on_conn_method_changed(self, choice: str) -> None:
+        """Triggered when connection method dropdown value is toggled."""
+        if choice == "Official Cloud API":
+            self.web_inputs_frame.grid_forget()
+            self.api_inputs_frame.grid(row=3, column=0, sticky="ew")
+        else:
+            self.api_inputs_frame.grid_forget()
+            self.web_inputs_frame.grid(row=3, column=0, sticky="ew")
+
+    def _on_open_web_click(self) -> None:
+        """Triggers controller callback to launch Chrome for WhatsApp Web."""
+        if "open_whatsapp_web_browser" in self.callbacks:
+            self.callbacks["open_whatsapp_web_browser"]()
+            
+    def _on_close_web_click(self) -> None:
+        """Triggers controller callback to close Chrome for WhatsApp Web."""
+        if "close_whatsapp_web_browser" in self.callbacks:
+            self.callbacks["close_whatsapp_web_browser"]()
 
     def _on_logo_upload_click(self) -> None:
         """Handles selecting customized brand logos."""
@@ -1149,6 +1226,34 @@ class WhatsAppSenderGUI(ctk.CTk):
         )
         if export_path and "export_filtered_leads" in self.callbacks:
             self.callbacks["export_filtered_leads"](status, export_path)
+
+    def show_qr_code(self, image_path: str) -> None:
+        """Loads and displays the QR code screenshot in the settings panel."""
+        try:
+            if not os.path.exists(image_path):
+                return
+                
+            # Use Pillow to load image and display in CTkLabel
+            img = Image.open(image_path)
+            img = img.resize((240, 240), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(img)
+            
+            # Grid the labels if not gridded
+            self.lbl_qr_title.grid(row=3, column=0, padx=20, pady=(10, 5), sticky="w")
+            self.lbl_qr_code.grid(row=4, column=0, padx=20, pady=(0, 10))
+            
+            self.lbl_qr_code.configure(image=photo)
+            self.lbl_qr_code.image = photo  # keep reference
+        except Exception as e:
+            self.append_log(f"Error rendering QR code: {e}")
+
+    def hide_qr_code(self) -> None:
+        """Hides the QR code widgets from the settings panel."""
+        try:
+            self.lbl_qr_title.grid_forget()
+            self.lbl_qr_code.grid_forget()
+        except Exception:
+            pass
 
     # =========================================================================
     # PUBLIC VIEW INTERACTION INTERFACES
