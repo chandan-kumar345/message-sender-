@@ -1,0 +1,7 @@
+Lead Name,Phone Number,Email Address,Company Name,Status,Last Contact Date
+John Doe,9876543210,john@example.com,Sooftcode,Pending,2026-07-01
+Jane Smith,+91 99999 88888,jane@domain.org,Google,Pending,2026-07-15
+Invalid Lead,12345,invalid@mail.net,TestCorp,Pending,2026-07-10
+Duplicate Lead,9876543210,duplicate@example.com,Sooftcode,Pending,2026-07-01
+Alice Cooper,09812345678,alice@rock.com,Warner Music,Pending,2026-07-18
+Bob Marley,+1 555-0199-283,bob@reggae.com,Island Records,Pending,2026-07-19
